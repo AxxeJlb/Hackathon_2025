@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Главархив - Распознавание документов</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 40px; 
+            line-height: 1.6;
+        }
+        .upload-area { 
+            border: 2px dashed #ccc; 
+            padding: 30px; 
+            text-align: center; 
+            margin: 20px 0; 
+            border-radius: 10px;
+        }
+        button { 
+            padding: 12px 24px; 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        
+        #status { margin: 15px 0; padding: 10px; border-radius: 5px; }
+        .status-processing { background: #fff3cd; color: #856404; }
+        .status-success { background: #d1edff; color: #0c5460; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        
+        #verification-interface { 
+            margin-top: 30px; 
+            border: 1px solid #ddd; 
+            padding: 25px; 
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+        .comparison-container { 
+            display: flex; 
+            gap: 25px; 
+            margin-bottom: 20px;
+        }
+        .comparison-panel { 
+            flex: 1; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        #original-image { 
+            max-width: 100%; 
+            max-height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        #editable-text { 
+            width: 100%; 
+            height: 300px; 
+            padding: 15px; 
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <h1>📜 Сервис распознавания архивных документов Главархива Москвы</h1>
+    
+    <div class="upload-area">
+        <h3>📤 Загрузите образ архивного документа</h3>
+        <input type="file" id="fileInput" accept=".jpg,.jpeg,.tiff,.png">
+        <br><br>
+        <button onclick="uploadFile()" id="uploadBtn">🔍 Распознать документ</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div id="verification-interface" style="display: none;">
+        <h3>✏️ Верификация результата</h3>
+        
+        <div class="comparison-container">
+            <div class="comparison-panel">
+                <h4>🖼️ Оригинальное изображение:</h4>
+                <img id="original-image" src="" alt="Загруженный документ">
+            </div>
+            
+            <div class="comparison-panel">
+                <h4>📝 Распознанный текст (можно редактировать):</h4>
+                <textarea id="editable-text"></textarea>
+                <br><br>
+                <button onclick="saveCorrectedText()">💾 Сохранить исправления</button>
+                <button onclick="exportData()">📄 Экспорт в Word (DOCX)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentText = '';
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const statusDiv = document.getElementById('status');
+            const uploadBtn = document.getElementById('uploadBtn');
+            
+            if (!fileInput.files[0]) {
+                alert('Пожалуйста, выберите файл для загрузки');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const imageUrl = URL.createObjectURL(file);
+            document.getElementById('original-image').src = imageUrl;
+
+            statusDiv.innerHTML = '<div class="status-processing">⏳ Загрузка и обработка документа...</div>';
+            statusDiv.style.display = 'block';
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Обработка...';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch('http://localhost:8000/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = '<div class="status-success">✅ Документ успешно обработан!</div>';
+                    currentText = result.text;
+                    document.getElementById('editable-text').value = currentText;
+                    document.getElementById('verification-interface').style.display = 'block';
+                } else {
+                    statusDiv.innerHTML = '<div class="status-error">❌ Ошибка при обработке файла</div>';
+                    document.getElementById('verification-interface').style.display = 'none';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status-error">❌ Ошибка сети: ${error.message}</div>`;
+                document.getElementById('verification-interface').style.display = 'none';
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '🔍 Распознать документ';
+            }
+        }
+
+        async function saveCorrectedText() {
+            currentText = document.getElementById('editable-text').value;
+            alert('✅ Исправления сохранены!');
+        }
+
+        async function exportData() {
+            const text = document.getElementById('editable-text').value || currentText;
+            if (!text || text === "Текст не распознан") {
+                alert('Нет текста для экспорта');
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('text', text);  // только text
+
+                const response = await fetch('http://localhost:8000/export', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'архивный_документ.docx';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    const error = await response.json();
+                    alert('Ошибка при экспорте: ' + (error.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                alert('Ошибка сети: ' + error.message);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropArea = document.querySelector('.upload-area');
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+            });
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, () => {
+                    dropArea.style.borderColor = '#007bff';
+                    dropArea.style.backgroundColor = '#f0f8ff';
+                });
+            });
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, () => {
+                    dropArea.style.borderColor = '#ccc';
+                    dropArea.style.backgroundColor = '';
+                });
+            });
+            dropArea.addEventListener('drop', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                const files = e.dataTransfer.files;
+                document.getElementById('fileInput').files = files;
+                setTimeout(uploadFile, 100);
+            });
+        });
+    </script>
+</body>
+</html>
